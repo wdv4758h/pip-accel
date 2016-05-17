@@ -1,7 +1,7 @@
 # Accelerator for pip, the Python package manager.
 #
 # Author: Peter Odding <peter.odding@paylogic.com>
-# Last Change: March 14, 2016
+# Last Change: May 17, 2016
 # URL: https://github.com/paylogic/pip-accel
 #
 # TODO Permanently store logs in the pip-accel directory (think about log rotation).
@@ -69,9 +69,9 @@ from pip_accel.utils import (
 
 # External dependencies.
 from humanfriendly import concatenate, Timer, pluralize
+from pip import basecommand as pip_basecommand_module
 from pip import index as pip_index_module
 from pip import wheel as pip_wheel_module
-from pip.commands import install as pip_install_module
 from pip.commands.install import InstallCommand
 from pip.exceptions import DistributionNotFound
 from pip.req import InstallRequirement
@@ -389,7 +389,7 @@ class PipAccelerator(object):
         """
         unpack_timer = Timer()
         logger.info("Unpacking distribution(s) ..")
-        with PatchedAttribute(pip_install_module, 'PackageFinder', CustomPackageFinder):
+        with PatchedAttribute(pip_basecommand_module, 'PackageFinder', CustomPackageFinder):
             requirements = self.get_pip_requirement_set(arguments, use_remote_index=False, use_wheels=use_wheels)
             logger.info("Finished unpacking %s in %s.", pluralize(len(requirements), "distribution"), unpack_timer)
             return requirements
