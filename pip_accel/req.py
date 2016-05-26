@@ -1,7 +1,7 @@
 # Accelerator for pip, the Python package manager.
 #
 # Author: Peter Odding <peter.odding@paylogic.com>
-# Last Change: February 2, 2016
+# Last Change: May 17, 2016
 # URL: https://github.com/paylogic/pip-accel
 
 """
@@ -18,12 +18,11 @@ working on (not yet public) and in that project I am very interested in whether
 a given requirement is a direct or transitive requirement. Unfortunately
 pip-accel did not preserve this information.
 
-That's when I decided that next to pip's :class:`pip.req.InstallRequirement`
-and setuptools' :class:`pkg_resources.Requirement` I would introduce yet
+That's when I decided that next to pip's :class:`pip.req_install.InstallRequirement`
+and packaging's :class:`packaging.requirements.Requirement` I would introduce yet
 another type of requirement object... It's basically just a summary of the
 other two types of requirement objects and it also provides access to the
-original requirement objects (for those who are interested; the interfaces are
-basically undocumented AFAIK).
+original requirement objects.
 """
 
 # Standard library modules.
@@ -63,11 +62,11 @@ class Requirement(object):
         Initialize a requirement object.
 
         :param config: A :class:`~pip_accel.config.Config` object.
-        :param requirement: A :class:`pip.req.InstallRequirement` object.
+        :param requirement: A :class:`pip.req_install.InstallRequirement` object.
         """
         self.config = config
         self.pip_requirement = requirement
-        self.setuptools_requirement = requirement.req
+        self.packaging_requirement = requirement.req
 
     def __repr__(self):
         """Generate a human friendly representation of a requirement object."""
@@ -80,9 +79,9 @@ class Requirement(object):
 
         This is the name used to register a package on PyPI and the name
         reported by commands like ``pip freeze``. Based on
-        :attr:`pkg_resources.Requirement.project_name`.
+        :attr:`pip.req_install.InstallRequirement.name`.
         """
-        return self.setuptools_requirement.project_name
+        return self.pip_requirement.name
 
     @cached_property
     def version(self):
@@ -152,7 +151,7 @@ class Requirement(object):
         The pathname of the directory containing the unpacked source distribution (a string).
 
         This is the directory that contains a ``setup.py`` script. Based on
-        :attr:`pip.req.InstallRequirement.source_dir`.
+        :attr:`pip.req_install.InstallRequirement.source_dir`.
         """
         return self.pip_requirement.source_dir
 
@@ -162,11 +161,11 @@ class Requirement(object):
         :data:`True` when the requirement is a wheel, :data:`False` otherwise.
 
         .. note:: To my surprise it seems to be non-trivial to determine
-                  whether a given :class:`pip.req.InstallRequirement` object
+                  whether a given :class:`pip.req_install.InstallRequirement` object
                   produced by pip's internal Python API concerns a source
                   distribution or a wheel distribution.
 
-                  There's a :class:`pip.req.InstallRequirement.is_wheel`
+                  There's a :class:`pip.req_install.InstallRequirement.is_wheel`
                   property but I'm currently looking at a wheel distribution
                   whose ``is_wheel`` property returns :data:`None`, apparently
                   because the requirement's ``url`` property is also :data:`None`.
@@ -182,7 +181,7 @@ class Requirement(object):
         elif probably_sdist and not probably_wheel:
             return False
         elif probably_sdist and probably_wheel:
-            variables = dict(requirement=self.setuptools_requirement,
+            variables = dict(requirement=self.packaging_requirement,
                              directory=self.source_directory)
             raise UnknownDistributionFormat("""
                 The unpacked distribution of {requirement} in {directory} looks
@@ -190,7 +189,7 @@ class Requirement(object):
                 confused!
             """, **variables)
         else:
-            variables = dict(requirement=self.setuptools_requirement,
+            variables = dict(requirement=self.packaging_requirement,
                              directory=self.source_directory)
             raise UnknownDistributionFormat("""
                 The unpacked distribution of {requirement} in {directory}
@@ -207,7 +206,7 @@ class Requirement(object):
         dependency of a dependency) or :data:`False` when the requirement is a
         direct dependency (specified on pip's command line or in a
         ``requirements.txt`` file). Based on
-        :attr:`pip.req.InstallRequirement.comes_from`.
+        :attr:`pip.req_install.InstallRequirement.comes_from`.
         """
         return isinstance(self.pip_requirement.comes_from, InstallRequirement)
 
@@ -223,7 +222,7 @@ class Requirement(object):
 
         :data:`True` when the requirement is to be installed in editable mode
         (i.e. setuptools "develop mode"). Based on
-        :attr:`pip.req.InstallRequirement.editable`.
+        :attr:`pip.req_install.InstallRequirement.editable`.
         """
         return self.pip_requirement.editable
 
