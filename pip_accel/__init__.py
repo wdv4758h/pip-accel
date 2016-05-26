@@ -1,7 +1,7 @@
 # Accelerator for pip, the Python package manager.
 #
 # Author: Peter Odding <peter.odding@paylogic.com>
-# Last Change: May 17, 2016
+# Last Change: May 26, 2016
 # URL: https://github.com/paylogic/pip-accel
 #
 # TODO Permanently store logs in the pip-accel directory (think about log rotation).
@@ -62,6 +62,7 @@ from pip_accel.utils import (
     makedirs,
     match_option,
     match_option_with_value,
+    remove_options,
     requirement_is_installed,
     same_directories,
     uninstall,
@@ -72,6 +73,7 @@ from humanfriendly import concatenate, Timer, pluralize
 from pip import basecommand as pip_basecommand_module
 from pip import index as pip_index_module
 from pip import wheel as pip_wheel_module
+from pip.commands.download import DownloadCommand
 from pip.commands.install import InstallCommand
 from pip.exceptions import DistributionNotFound
 from pip.req import InstallRequirement
@@ -376,16 +378,16 @@ class PipAccelerator(object):
                  :exc:`pip.exceptions.DistributionNotFound` when not all
                  requirements can be satisfied.
 
-        This function checks whether there are local source distributions
-        available for all requirements, unpacks the source distribution
+        This function checks whether there are local source and/or wheel
+        distributions available for all requirements, unpacks the distribution
         archives and finds the names and versions of the requirements. By using
-        the ``pip install --download`` command we avoid reimplementing the
-        following pip features:
+        the ``pip download`` command we avoid reimplementing the following pip
+        features:
 
-        - Parsing of ``requirements.txt`` (including recursive parsing).
+        - Parsing of requirements files (including recursive parsing).
         - Resolution of possibly conflicting pinned requirements.
-        - Unpacking source distributions in multiple formats.
-        - Finding the name & version of a given source distribution.
+        - Unpacking source and wheel distributions (in multiple formats).
+        - Finding the name & version of a given distribution archive.
         """
         unpack_timer = Timer()
         logger.info("Unpacking distribution(s) ..")
@@ -430,50 +432,61 @@ class PipAccelerator(object):
         # core logic of pip-accel is hidden and it uses some esoteric features
         # of pip so this method is heavily commented.
         command_line = []
-        # Use `--download' to instruct pip to download requirement(s) into
-        # pip-accel's local source distribution index directory. This has the
-        # following documented side effects (see `pip install --help'):
-        #  1. It disables the installation of requirements (without using the
-        #     `--no-install' option which is deprecated and slated for removal
-        #     in pip 7.x).
-        #  2. It ignores requirements that are already installed (because
-        #     pip-accel doesn't actually need to re-install requirements that
-        #     are already installed we will have work around this later, but
-        #     that seems fairly simple to do).
-        command_line.append('--download=%s' % self.config.source_index)
-        # Use `--find-links' to point pip at pip-accel's local source
-        # distribution index directory. This ensures that source distribution
-        # archives are never downloaded more than once (regardless of the HTTP
-        # cache that was introduced in pip 6.x).
+        # Use `pip download --dest=...' to instruct pip to download the
+        # requirement(s) into pip-accel's local distribution cache.
+        command_line.append('--dest=%s' % self.config.source_index)
+        # Use `--find-links' to point pip at pip-accel's local distribution
+        # cache. This ensures that distribution archives are never downloaded
+        # more than once (regardless of the HTTP cache introduced in pip 6.x).
         command_line.append('--find-links=%s' % create_file_url(self.config.source_index))
-        # Use `--no-binary=:all:' to ignore wheel distributions by default in
-        # order to preserve backwards compatibility with callers that expect a
-        # requirement set consisting only of source distributions that can be
-        # converted to `dumb binary distributions'.
+        # Enable or disable wheel distributions using the `--no-binary=:all:'
+        # option. By default pip-accel disables wheel distributions in order to
+        # preserve backwards compatibility with callers of the Python API
+        # (specifically py2deb) that expect a requirement set consisting only
+        # of source distributions that can be converted to `dumb binary
+        # distributions'. We also translate the deprecated --no-use-wheel
+        # option to --no-binary=:all: because of some hairy details:
+        #
+        #  - The `pip install' command in 8 has deprecated but retained the
+        #    --no-use-wheel option, however the `pip download' command
+        #    introduced in pip 8 never supported the --no-use-wheel option to
+        #    begin with and requires --no-binary=:all: instead.
+        #
+        #  - Because pip-accel switched from using `pip install' to `pip
+        #    download' during the upgrade to pip 8 we have to translate this
+        #    option to preserve the backwards compatibility of pip-accel's
+        #    command line interface.
+        #
+        # First we remove the --no-use-wheel option from the arguments.
+        arguments = [arg for arg in arguments if arg != '--no-use-wheel']
+        # Then we add the --no-binary=:all: option (when applicable).
         if not use_wheels and self.arguments_allow_wheels(arguments):
             command_line.append('--no-binary=:all:')
-        # Use `--no-index' to force pip to only consider source distribution
-        # archives contained in pip-accel's local source distribution index
-        # directory. This enables pip-accel to ask pip "Can the local source
-        # distribution index satisfy all requirements in the given requirement
-        # set?" which enables pip-accel to keep pip off the internet unless
-        # absolutely necessary :-).
+        # Use `--no-index' to force pip to only consider distribution archives
+        # contained in pip-accel's local distribution cache. This enables
+        # pip-accel to ask pip "Can the local distribution cache satisfy all
+        # requirements in the given requirement set?" which enables pip-accel
+        # to keep pip off the internet unless absolutely necessary :-).
         if not use_remote_index:
             command_line.append('--no-index')
-        # Use `--no-clean' to instruct pip to unpack the source distribution
-        # archives and *not* clean up the unpacked source distributions
-        # afterwards. This enables pip-accel to replace pip's installation
-        # logic with cached binary distribution archives.
+        # Use `--no-clean' to instruct pip to unpack the distribution archives
+        # and *not* clean up the unpacked distributions afterwards. This
+        # enables pip-accel to amend pip's installation logic with cached
+        # binary distribution archives.
         command_line.append('--no-clean')
-        # Use `--build-directory' to instruct pip to unpack the source
-        # distribution archives to a temporary directory managed by pip-accel.
-        # We will clean up the build directory when we're done using the
-        # unpacked source distributions.
-        command_line.append('--build-directory=%s' % self.build_directory)
-        # Append the user's `pip install ...' arguments to the command line
-        # that we just assembled.
-        command_line.extend(arguments)
-        logger.info("Executing command: pip install %s", ' '.join(command_line))
+        # Use `--build' to instruct pip to unpack the distribution
+        # archives to a temporary directory managed by pip-accel.
+        command_line.append('--build=%s' % self.build_directory)
+        # Append the user's `pip install' arguments to the command line that we
+        # just assembled but filter out options that are not supported by the
+        # `pip download' subcommand.
+        command_line.extend(remove_options(
+            arguments,
+            '-I', '--ignore-installed',
+            '-U', '--upgrade',
+            '--user',
+        ))
+        logger.info("Executing command: pip download %s", ' '.join(command_line))
         # Clear the build directory to prevent PreviousBuildDirError exceptions.
         self.clear_build_directory()
         # During the pip 6.x upgrade pip-accel switched to using `pip install
@@ -486,14 +499,16 @@ class PipAccelerator(object):
         # [1] https://github.com/paylogic/pip-accel/issues/51
         # [2] https://pip.pypa.io/en/latest/reference/pip.html#exists-action-option
         os.environ.setdefault('PIP_EXISTS_ACTION', 'w')
-        # Initialize and run the `pip install' command.
-        command = InstallCommand()
+        # Initialize and run the `pip download' command.
+        command = DownloadCommand()
         opts, args = command.parse_args(command_line)
-        if not opts.ignore_installed:
-            # If the user didn't supply the -I, --ignore-installed option we
-            # will forcefully disable the option. Refer to the documentation of
-            # the AttributeOverrides class for further details.
-            opts = AttributeOverrides(opts, ignore_installed=False)
+        # DownloadCommand.run() unconditionally enables --ignore-installed
+        # internally which breaks pip-accel's backwards compatibility. As a
+        # workaround we forcefully override the option according to whether the
+        # -I, --ignore-installed option was given. Refer to the documentation
+        # of the AttributeOverrides class for further details.
+        ignore_installed = any(match_option(a, '-I', '--ignore-installed') for a in arguments)
+        opts = AttributeOverrides(opts, ignore_installed=ignore_installed)
         requirement_set = command.run(opts, args)
         # Make sure the output of pip and pip-accel are not intermingled.
         sys.stdout.flush()
@@ -610,7 +625,7 @@ class PipAccelerator(object):
         self.build_directories.append(tempfile.mkdtemp(prefix='pip-accel-build-dir-'))
 
     def clear_build_directory(self):
-        """Clear the build directory where pip unpacks the source distribution archives."""
+        """Clear the build directory where pip unpacks distribution archives."""
         stat = os.stat(self.build_directory)
         shutil.rmtree(self.build_directory)
         os.makedirs(self.build_directory, stat.st_mode)
@@ -817,14 +832,16 @@ class AttributeOverrides(object):
     :class:`AttributeOverrides` enables overriding of object attributes.
 
     During the pip 6.x upgrade pip-accel switched to using ``pip install
-    --download`` which unintentionally broke backwards compatibility with
-    previous versions of pip-accel as documented in `issue 52`_.
+    --download`` (since then pip-accel has switched to ``pip download``) which
+    unintentionally broke backwards compatibility with previous versions of
+    pip-accel as documented in `issue 52`_.
 
-    The reason for this is that when pip is given the ``--download`` option it
-    internally enables ``--ignore-installed`` (which can be problematic for
-    certain use cases as described in `issue 52`_). There is no documented way
-    to avoid this behavior, so instead pip-accel resorts to monkey patching to
-    restore backwards compatibility.
+    The reason for this is that when pip is given the ``--download`` option (or
+    the ``download`` command is executed) it internally enables
+    ``--ignore-installed`` (which can be problematic for certain use cases as
+    described in `issue 52`_). There is no documented way to avoid this
+    behavior, so instead pip-accel resorts to monkey patching to restore
+    backwards compatibility.
 
     :class:`AttributeOverrides` is used to replace pip's parsed command line
     options object with an object that defers all attribute access (gets and

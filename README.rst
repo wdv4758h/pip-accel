@@ -264,45 +264,46 @@ Control flow of pip-accel
 -------------------------
 
 The way pip-accel works is not very intuitive but it is very effective. Below
-is an overview of the control flow. Once you take a look at the code you'll
-notice that the steps below are all embedded in a loop that retries several
-times. This is mostly because of step 2 (downloading the source
+is a conceptual overview of the control flow. Once you take a look at the code
+you'll notice that the steps below are all embedded in a loop that retries
+several times. This is mostly because of step 2 (downloading the source
 distributions).
 
-1. Run ``pip install --download=... --no-index -r requirements.txt`` to unpack
-   source distributions available in the local source index. This is the first
-   step because pip-accel should accept `requirements.txt` files as input but
-   it will manually install dependencies from cached binary distributions
-   (without using pip or easy_install):
+1. Run ``pip install --no-index --find-links=... -r requirements.txt`` to
+   unpack the required source and/or wheel distributions available in the local
+   cache. This is the first step because pip-accel should support the same
+   command line interface that pip does (including things like requirements
+   files) but it will manually install dependencies from cached binary
+   distributions (without using pip or easy_install):
 
   - If the command succeeds it means all dependencies are already available as
-    downloaded source distributions. We'll parse the verbose pip output of step
-    1 to find the direct and transitive dependencies (names and versions)
-    defined in `requirements.txt` and use them as input for step 3.
-    Go to step 3.
+    downloaded source and/or wheel distributions. We determine the direct and
+    transitive dependencies (names and versions) reported by pip and use them
+    as input for step 3. Go to step 3.
 
   - If the command fails it probably means not all dependencies are available
     as local source distributions yet so we should download them. Go to step 2.
 
-2. Run ``pip install --download=... -r requirements.txt`` to download missing
-   source distributions to the download cache:
+2. Run ``pip download --dest=... -r requirements.txt`` to download missing
+   source and/or wheel distributions to the local index:
 
   - If the command fails it means that pip encountered errors while scanning
-    PyPI_, scanning a distribution website, downloading a source distribution
-    or unpacking a source distribution. Usually these kinds of errors are
-    intermittent so retrying a few times is worth a shot. Go to step 2.
+    PyPI_, scanning a distribution website, downloading a distribution or
+    unpacking a distribution. Usually these kinds of errors are intermittent so
+    retrying a few times is worth a shot. Go to step 2.
 
   - If the command succeeds it means all dependencies are now available as
-    local source distributions; we don't need the network anymore! Go to step 1.
+    local source and/or wheel distributions; we don't need the network anymore!
+    Go to step 1.
 
 3. Run ``python setup.py bdist_dumb --format=gztar`` for each dependency that
-   doesn't have a cached binary distribution yet (taking version numbers into
-   account). Go to step 4.
+   was downloaded as a source distribution and doesn't have a cached binary
+   distribution yet (taking version numbers into account). Go to step 4.
 
-4. Install all dependencies from binary distributions based on the list of
-   direct and transitive dependencies obtained in step 1. We have to do these
-   installations manually because easy_install nor pip support binary
-   ``*.tar.gz`` distributions.
+4. Install all dependencies from wheel and/or cached binary distributions based
+   on the list of direct and transitive dependencies obtained in step 1. We
+   perform the installation of binary installations manually because
+   easy_install and pip don't support binary ``*.tar.gz`` distributions.
 
 Contact
 -------

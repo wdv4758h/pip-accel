@@ -1,7 +1,7 @@
 # Utility functions for the pip accelerator.
 #
 # Author: Peter Odding <peter.odding@paylogic.com>
-# Last Change: January 17, 2016
+# Last Change: May 18, 2016
 # URL: https://github.com/paylogic/pip-accel
 
 """
@@ -302,6 +302,41 @@ def uninstall(*package_names):
     command.run(opts, args)
 
 
+def remove_options(arguments, *options):
+    """
+    Remove short and/or long options from a command line.
+
+    :param arguments: The command line arguments (a list of strings).
+    :param options: Any short and/or long options to remove (one or more
+                    strings).
+    :returns: A list of strings with the remaining arguments.
+    """
+    filtered = []
+    for arg in arguments:
+        for opt in options:
+            if is_short_option(opt):
+                if match_short_option(arg, opt):
+                    # Reconstruct the remaining short options in this argument (if any).
+                    remainder = [s for s in arg if s not in opt]
+                    if remainder:
+                        # Replace the argument with the remaining short options.
+                        arg = '-' + ''.join(remainder)
+                    else:
+                        # Swallow the argument (it's a short option to be removed).
+                        arg = None
+                        break
+            elif arg == opt:
+                # Swallow the argument (it's a long option to be removed, or at
+                # least that's what we assume given that the caller provided
+                # this token as an option to be removed and because it's not a
+                # short option).
+                arg = None
+                break
+        if arg is not None:
+            filtered.append(arg)
+    return filtered
+
+
 def match_option(argument, short_option, long_option):
     """
     Match a command line argument against a short and long option.
@@ -311,7 +346,20 @@ def match_option(argument, short_option, long_option):
     :param long_option: The long option (a string).
     :returns: :data:`True` if the argument matches, :data:`False` otherwise.
     """
-    return short_option[1] in argument[1:] if is_short_option(argument) else argument == long_option
+    return match_short_option(argument, short_option) or argument == long_option
+
+
+def match_short_option(argument, short_option):
+    """
+    Match a command line argument against a short option.
+
+    :param argument: The command line argument (a string).
+    :param short_option: The short option (a string).
+    :returns: :data:`True` if the argument matches, :data:`False` otherwise.
+    """
+    return (is_short_option(argument) and
+            is_short_option(short_option) and
+            short_option[1] in argument[1:])
 
 
 def is_short_option(argument):
