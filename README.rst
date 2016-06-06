@@ -269,7 +269,7 @@ you'll notice that the steps below are all embedded in a loop that retries
 several times. This is mostly because of step 2 (downloading the source
 distributions).
 
-1. Run ``pip install --no-index --find-links=... -r requirements.txt`` to
+1. Run ``pip download --no-index --find-links=... -r requirements.txt`` to
    unpack the required source and/or wheel distributions available in the local
    cache. This is the first step because pip-accel should support the same
    command line interface that pip does (including things like requirements
