@@ -119,7 +119,7 @@ class PipAccelTestCase(unittest.TestCase):
 
     def setUp(self):
         """Reset logging verbosity before each test."""
-        coloredlogs.set_level(logging.INFO)
+        coloredlogs.set_level('DEBUG')
 
     def skipTest(self, text, *args, **kw):
         """
