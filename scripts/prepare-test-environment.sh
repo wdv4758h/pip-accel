@@ -3,13 +3,24 @@
 # Shell script to initialize a pip-accel test environment.
 #
 # Author: Peter Odding <peter.odding@paylogic.com>
-# Last Change: March 14, 2016
+# Last Change: July 30, 2016
 # URL: https://github.com/paylogic/pip-accel
 #
 # This shell script is used in tox.ini and .travis.yml to prepare
 # virtual environments for running the pip-accel test suite.
 
 main () {
+
+  # A failing Travis CI job [1] brought me to a GitHub issue [2] which leads me
+  # to believe that upgrading setuptools on Travis CI may help to somewhat
+  # unbreak the pip-accel test suite... I'm not actually sure whether this will
+  # help but it's can't hurt to try :-).
+  #
+  # [1] TypeError: unorderable types: str() < NoneType()
+  #     https://travis-ci.org/paylogic/pip-accel/jobs/135686251
+  # [2] https://github.com/pypa/pip/issues/2357#ref-pullrequest-62058112
+  msg "Making sure setuptools >= 14.3 is installed .."
+  pip install --quiet 'setuptools >= 14.3'
 
   # Install the dependencies of pip-accel.
   msg "Installing dependencies .."
