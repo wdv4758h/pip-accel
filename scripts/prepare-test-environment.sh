@@ -59,23 +59,30 @@ install_working_copies () {
     for PROJECT in coloredlogs executor humanfriendly; do
       DIRECTORY="$HOME/projects/python/$PROJECT"
       if [ -e "$DIRECTORY" ]; then
-        if flock -x "$DIRECTORY"; then
-          msg "Installing working copy of $PROJECT .."
-          # The following code to install a Python package from a git checkout is
-          # a bit convoluted because I want to bypass pip's frustrating "let's
-          # copy the whole project tree including a 100 MB `.tox' directory
-          # before installing 10 KB of source code" approach. The use of a
-          # source distribution works fine :-).
-          cd "$DIRECTORY"
-          rm -Rf dist
-          python setup.py sdist &>/dev/null
-          # Side step caching of binary wheels because we'll be building a new
-          # one on each run anyway.
-          pip install --no-binary=:all: --quiet dist/*
-        fi
+        (
+          flock -n 9 || exit 1
+          install_working_copy_helper "$DIRECTORY"
+        ) 9> "/tmp/pip-accel-test-suite-$PROJECT-install.lock"
       fi
     done
   fi
+}
+
+install_working_copy_helper () {
+  local directory="$1"
+  local project="$(basename "$directory")"
+  msg "Installing working copy of $project .."
+  # The following code to install a Python package from a git checkout is
+  # a bit convoluted because I want to bypass pip's frustrating "let's
+  # copy the whole project tree including a 100 MB `.tox' directory
+  # before installing 10 KB of source code" approach. The use of a
+  # source distribution works fine :-).
+  cd "$directory"
+  rm -Rf dist
+  python setup.py sdist &>/dev/null
+  # Side step caching of binary wheels because we'll be building a new
+  # one on each run anyway.
+  pip install --no-binary=:all: --quiet dist/*
 }
 
 install_requests () {
