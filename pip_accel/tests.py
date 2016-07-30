@@ -1,7 +1,7 @@
 # Tests for the pip accelerator.
 #
 # Author: Peter Odding <peter.odding@paylogic.com>
-# Last Change: June 6, 2016
+# Last Change: July 30, 2016
 # URL: https://github.com/paylogic/pip-accel
 
 """
@@ -311,7 +311,7 @@ class PipAccelTestCase(unittest.TestCase):
 
     def test_package_downgrade(self):
         """Test installation of older versions over newer version (package downgrades)."""
-        if find_installed_version('requests') != '2.6.0':
+        if find_installed_version('requests') != ['2.6.0']:
             return self.skipTest("""
                 Skipping package downgrade test because requests==2.6.0 should be
                 installed beforehand (see `scripts/prepare-test-environment.sh'
@@ -321,7 +321,7 @@ class PipAccelTestCase(unittest.TestCase):
         # Downgrade to requests 2.2.1.
         accelerator.install_from_arguments(['requests==2.2.1'])
         # Make sure requests was downgraded.
-        assert find_installed_version('requests') == '2.2.1', \
+        assert find_installed_version('requests') == ['2.2.1'], \
             "pip-accel failed to (properly) downgrade requests to version 2.2.1!"
 
     def test_s3_backend(self):
@@ -851,7 +851,7 @@ class PipAccelTestCase(unittest.TestCase):
         ])
         assert num_installed == 1, "Expected pip-accel to install exactly one package!"
         # Make sure the correct version was installed.
-        assert find_installed_version('pep8') == '1.6.0', \
+        assert find_installed_version('pep8') == ['1.6.0'], \
             "pip-accel failed to (properly) install pep8 version 1.6.0!"
 
     def test_empty_requirements_file(self):
@@ -1028,8 +1028,10 @@ def find_installed_version(package_name, encoding='UTF-8'):
     Find the version of an installed package (in a subprocess).
 
     :param package_name: The name of the package (a string).
-    :returns: The package's version (a string) or :data:`None` if the package can't
-              be found.
+    :returns: A list of strings with the versions of distributions in the
+              working set of pkg_resources that match the given `package_name`.
+              More then one version may be reported due to corrupt package
+              metadata left over by old installations of a package.
 
     This function is specifically for use in the pip-accel test suite to
     reliably determine the installed version of a Python package in the current
@@ -1042,12 +1044,11 @@ def find_installed_version(package_name, encoding='UTF-8'):
         for distribution in pkg_resources.working_set:
             if distribution.key.lower() == {name}:
                 print(distribution.version)
-                break
     """, name=repr(package_name.lower()))
     stdout, stderr = interpreter.communicate(snippet.encode(encoding))
     output = stdout.decode(encoding)
     if output and not output.isspace():
-        return output.strip()
+        return output.split()
 
 
 def find_one_file(directory, pattern):
