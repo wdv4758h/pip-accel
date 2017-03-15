@@ -1,5 +1,5 @@
 cached-property >= 0.1.5
 coloredlogs >= 3.0
 humanfriendly >= 1.44.7
-pip >= 8.1, < 8.2
+pip >= 9, < 10
 setuptools >= 7.0
