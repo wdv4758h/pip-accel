@@ -5,10 +5,9 @@ sudo: required
 language: python
 env: BOTO_CONFIG=/tmp/nowhere
 python:
-  - "2.6"
-  - "2.7"
   - "3.4"
   - "3.5"
+  - "3.6"
   - "pypy"
 before_install:
   - scripts/retry-command sudo apt-get update
